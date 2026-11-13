@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f6f7f8">
+<title>ping — push notifications</title>
+<style>
+:root{color-scheme:light;--bg:#f6f7f8;--panel:#fff;--ink:#17191d;--muted:#747982;--line:#e7e9ec;--accent:#17191d;--soft:#f0f1f3;--good:#16794a;--bad:#b42318}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:44px 22px 80px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:42px}.brand{font-size:20px;font-weight:750;letter-spacing:-.8px}.status{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:8px}.dot{width:7px;height:7px;border-radius:50%;background:#16a36a}
+h1{font-size:34px;line-height:1.1;letter-spacing:-1.5px;margin:0 0 12px}.lead{color:var(--muted);max-width:620px;margin:0 0 30px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;min-width:0}.wide{grid-column:1/-1}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:12px}h2{font-size:16px;letter-spacing:-.3px;margin:0 0 16px}label{display:block;font-size:12px;color:var(--muted);margin:12px 0 6px}input,textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:11px 12px;font:inherit;color:var(--ink);background:#fff;outline:none}input:focus,textarea:focus{border-color:#777}textarea{min-height:74px;resize:vertical}button{border:0;border-radius:8px;background:var(--accent);color:white;padding:10px 14px;font:600 13px inherit;cursor:pointer;margin-top:14px}button.secondary{background:var(--soft);color:var(--ink)}button:disabled{opacity:.5;cursor:not-allowed}.hint{font-size:12px;color:var(--muted);margin-top:9px}.msg{font-size:12px;margin-top:12px;white-space:pre-wrap}.msg.good{color:var(--good)}.msg.bad{color:var(--bad)}.project{border:1px solid var(--line);border-radius:10px;padding:13px;margin-top:10px}.project strong{display:block}.project small{color:var(--muted);overflow-wrap:anywhere}.key{font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere;background:var(--soft);padding:10px;border-radius:7px;margin-top:8px}.hidden{display:none!important}.footer{margin-top:26px;color:var(--muted);font-size:12px}.footer a{color:inherit}
+@media(max-width:700px){.wrap{padding:26px 15px 55px}.grid{grid-template-columns:1fr}.wide{grid-column:auto}h1{font-size:29px}.top{margin-bottom:32px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><div class="brand">ping<span style="color:#999">.</span></div><div class="status"><i class="dot"></i> Cloudflare Worker</div></header>
+  <h1>Push notifications,<br>without the backend.</h1>
+  <p class="lead">A serverless Web Push relay for websites. Create a project, register browsers, and send native notifications from your own trusted backend.</p>
+
+  <section class="card" style="margin-bottom:16px">
+    <div class="eyebrow">Owner access</div><h2>Unlock project controls</h2>
+    <label for="admin">Admin token</label><input id="admin" type="password" autocomplete="off" placeholder="Your ADMIN_TOKEN secret">
+    <button id="unlock">Unlock dashboard</button><div id="authMsg" class="msg"></div>
+    <p class="hint">The admin token stays in this browser tab and is not saved.</p>
+  </section>
+
+  <div id="controls" class="grid hidden">
+    <section class="card">
+      <div class="eyebrow">01 / New project</div><h2>Create a project</h2>
+      <label for="name">Project name</label><input id="name" maxlength="60" placeholder="My website">
+      <label for="origins">Allowed website origins</label><textarea id="origins" placeholder="https://example.com&#10;https://www.example.com"></textarea>
+      <p class="hint">One exact origin per line. Include scheme and port if applicable. No paths or trailing slash.</p>
+      <button id="create">Create project</button><div id="createMsg" class="msg"></div>
+      <div id="newKey" class="hidden"><div class="eyebrow" style="margin-top:18px">Copy this key now</div><div id="keyValue" class="key"></div><button class="secondary" id="copyKey">Copy API key</button></div>
+    </section>
+    <section class="card">
+      <div class="eyebrow">02 / Send a test</div><h2>Test a notification</h2>
+      <label for="projectId">Project ID</label><input id="projectId" placeholder="Project ID">
+      <label for="apiKey">Project API key</label><input id="apiKey" type="password" placeholder="ping_..." autocomplete="off">
+      <label for="channel">Channel</label><input id="channel" value="general">
+      <label for="title">Notification title</label><input id="title" value="Hello from ping">
+      <label for="body">Message</label><textarea id="body">Your push notifications are working.</textarea>
+      <button id="send">Send test notification</button><div id="sendMsg" class="msg"></div>
+    </section>
+    <section class="card wide">
+      <div class="eyebrow">03 / Projects</div><h2>Your projects</h2>
+      <button class="secondary" id="refresh">Refresh projects</button><div id="projects"></div>
+    </section>
+  </div>
+  <p class="footer">ping is a Web Push relay, not a notification permission bypass. Visitors must opt in. Keep project API keys on trusted server-side code. <a href="https://developer.mozilla.org/en-US/docs/Web/API/Push_API" target="_blank" rel="noreferrer">Web Push docs</a></p>
+</div>
+<script>
+let adminToken = "";
+const $ = id => document.getElementById(id);
+const msg = (id,text,good=false) => { const el=$(id);el.textContent=text;el.className="msg "+(good?"good":"bad"); };
+const adminHeaders = () => ({Authorization:"Bearer "+adminToken,"Content-Type":"application/json"});
+async function api(path,options={}) {
+  const r=await fetch(path,{...options,headers:{...(options.headers||{})}});
+  const data=await r.json().catch(()=>({error:"Invalid server response"}));
+  if(!r.ok) throw new Error(data.error||"Request failed ("+r.status+")");
+  return data;
+}
+$("unlock").onclick=async()=>{
+  adminToken=$("admin").value.trim();
+  try{await api("/v1/admin/projects",{headers:adminHeaders()});$("controls").classList.remove("hidden");msg("authMsg","Dashboard unlocked.",true);await refresh();}
+  catch(e){adminToken="";$("controls").classList.add("hidden");msg("authMsg",e.message);}
+};
+async function refresh(){
+  try{const d=await api("/v1/admin/projects",{headers:adminHeaders()});$("projects").innerHTML="";
+    if(!d.projects.length){$("projects").textContent="No projects yet.";return;}
+    d.projects.forEach(p=>{const el=document.createElement("div");el.className="project";const strong=document.createElement("strong");strong.textContent=p.name;const small=document.createElement("small");small.textContent=p.id+" · "+p.origins.join(", ");el.append(strong,small);el.onclick=()=>{$("projectId").value=p.id;};$("projects").append(el);});
+  }catch(e){msg("authMsg",e.message);}
+}
+$("refresh").onclick=refresh;
+$("create").onclick=async()=>{
+  const origins=$("origins").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  try{
+    const d=await api("/v1/admin/projects",{method:"POST",headers:adminHeaders(),body:JSON.stringify({name:$("name").value,origins})});
+    $("projectId").value=d.project.id;$("apiKey").value=d.apiKey;$("newKey").classList.remove("hidden");$("keyValue").textContent=d.apiKey;
+    msg("createMsg","Project created. Save the API key now.",true);await refresh();
+  }catch(e){msg("createMsg",e.message);}
+};
+$("copyKey").onclick=async()=>{await navigator.clipboard.writeText($("keyValue").textContent);$("copyKey").textContent="Copied";};
+$("send").onclick=async()=>{
+  try{
+    const r=await fetch("/v1/send",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("apiKey").value.trim()},body:JSON.stringify({projectId:$("projectId").value.trim(),channel:$("channel").value.trim(),title:$("title").value,body:$("body").value})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||"Send failed");
+    msg("sendMsg",`Accepted: ${d.sent} sent · ${d.failed} failed · ${d.total} total`,d.sent>0);
+  }catch(e){msg("sendMsg",e.message);}
+};
+</script>
+</body>
+</html>
